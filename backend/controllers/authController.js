@@ -1,7 +1,8 @@
-const User = require("../models/User");
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
+const User = require("../models/User");
+const jwt = require("jsonwebtoken");
+const fetch = require("node-fetch"); // Required for access token verification
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -45,25 +46,36 @@ exports.login = async (req, res) => {
 exports.googleLogin = async (req, res) => {
   const { accessToken } = req.body;
 
+  if (!accessToken) {
+    return res.status(400).json({ msg: "Access token is required" });
+  }
+
   try {
-    const ticket = await client.verifyIdToken({
-      idToken: accessToken, // Use the access token for verification
-      audience: process.env.GOOGLE_CLIENT_ID,
+    // Fetch user info from Google using access token
+    const googleRes = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
 
-    const payload = ticket.getPayload();
-    const { email, name } = payload;
+    const googleData = await googleRes.json();
+
+    if (!googleData.email || !googleData.name) {
+      return res.status(400).json({ msg: "Invalid Google data" });
+    }
+
+    const { email, name } = googleData;
 
     let user = await User.findOne({ email });
+
     if (!user) {
       user = await User.create({
         name,
         email,
-        password: "google-user", // Placeholder password for Google users
+        password: "google-user", // placeholder
       });
     }
 
     const token = jwt.sign({ user: { id: user._id } }, process.env.JWT_SECRET, { expiresIn: "1h" });
+
     res.json({ token });
   } catch (error) {
     console.error("Google Login Error:", error.message);
