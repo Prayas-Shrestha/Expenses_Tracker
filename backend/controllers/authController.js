@@ -41,13 +41,13 @@ exports.login = async (req, res) => {
   }
 };
 
-// ✅ Login with Google ID token
+// ✅ Login with Google access token
 exports.googleLogin = async (req, res) => {
-  const { idToken } = req.body;
+  const { accessToken } = req.body;
 
   try {
     const ticket = await client.verifyIdToken({
-      idToken,
+      idToken: accessToken, // Use the access token for verification
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
@@ -59,7 +59,7 @@ exports.googleLogin = async (req, res) => {
       user = await User.create({
         name,
         email,
-        password: "google-user", // placeholder password
+        password: "google-user", // Placeholder password for Google users
       });
     }
 
