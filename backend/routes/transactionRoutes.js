@@ -33,6 +33,9 @@ router.get("/budget", getBudgetStats);
 // 📆 Daily spending breakdown
 router.get("/expenses/daily", getDailyExpenses);
 
+router.put("/:id", authMiddleware, updateTransaction);
+
+
 // 📅 Monthly spending breakdown
 router.get("/expenses/monthly", getMonthlyExpenses);
 
