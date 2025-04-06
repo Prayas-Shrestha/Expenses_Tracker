@@ -9,6 +9,7 @@ const {
   addTransaction,
   getTransactions,
   deleteTransaction,
+  updateTransaction,
   getBudgetStats,
   getDailyExpenses,
   getMonthlyExpenses,
