@@ -22,7 +22,7 @@ exports.register = async (req, res) => {
     console.error("Register Error:", error.message);
     res.status(500).json({ msg: "Server error", error: error.message });
   }
-}; 
+};
 
 // ✅ Login with email + password
 exports.login = async (req, res) => {
