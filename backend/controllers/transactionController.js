@@ -26,6 +26,29 @@ exports.addTransaction = async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 };
+// ✅ Update a transaction
+exports.updateTransaction = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { category, amount, note, date } = req.body;
+
+    const transaction = await Transaction.findOne({ _id: id, userId: req.user });
+    if (!transaction) {
+      return res.status(404).json({ msg: "Transaction not found" });
+    }
+
+    transaction.category = category || transaction.category;
+    transaction.amount = amount || transaction.amount;
+    transaction.note = note || transaction.note;
+    transaction.date = date || transaction.date;
+
+    await transaction.save();
+    res.status(200).json({ msg: "Transaction updated successfully", transaction });
+  } catch (error) {
+    console.error("❌ Update Transaction Error:", error.message);
+    res.status(500).json({ msg: "Server error" });
+  }
+};
 
 // ✅ Get all transactions for the logged-in user
 exports.getTransactions = async (req, res) => {
