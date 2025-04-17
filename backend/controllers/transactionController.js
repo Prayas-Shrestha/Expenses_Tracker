@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Transaction = require("../models/Transaction");
 
 // ✅ Add a new transaction (income, expense, or savings)
