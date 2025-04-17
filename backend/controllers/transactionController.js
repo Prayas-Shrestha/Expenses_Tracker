@@ -144,7 +144,7 @@ exports.getDailyExpenses = async (req, res) => {
   }
 };
 
-// ✅ Group monthly expense totals
+// ✅ Group monthly expense total
 exports.getMonthlyExpenses = async (req, res) => {
   try {
     const userId = req.user;
