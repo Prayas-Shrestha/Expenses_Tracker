@@ -79,35 +79,62 @@ exports.getBudgetStats = async (req, res) => {
   try {
     const userId = req.user;
 
-    // Calculate total income
+    // 1. Get total income
     const incomeResult = await Transaction.aggregate([
       { $match: { userId, type: "income" } },
-      { $group: { _id: null, totalIncome: { $sum: "$amount" } } }
+      { $group: { _id: null, totalIncome: { $sum: "$amount" } } },
     ]);
     const totalIncome = incomeResult.length > 0 ? incomeResult[0].totalIncome : 0;
 
-    // Calculate expenses grouped by budget category
-    const expensesResult = await Transaction.aggregate([
-      { $match: { userId, type: "expense" } },
-      { $group: { _id: "$budgetCategory", totalSpent: { $sum: "$amount" } } }
+    // 2. Get grouped expenses and savings by budgetCategory
+    const groupedResult = await Transaction.aggregate([
+      {
+        $match: {
+          userId,
+          $or: [
+            { type: "expense" },
+            { type: "savings", budgetCategory: { $in: ["savings"] } },
+          ],
+        },
+      },
+      {
+        $group: {
+          _id: "$budgetCategory",
+          totalSpent: { $sum: "$amount" },
+        },
+      },
     ]);
 
-    // Build response object
+    // 3. Initialize stats
     const budgetStats = { totalIncome, needs: 0, wants: 0, savings: 0 };
-    expensesResult.forEach(expense => {
-      budgetStats[expense._id] = expense.totalSpent;
+
+    groupedResult.forEach((item) => {
+      if (budgetStats.hasOwnProperty(item._id)) {
+        budgetStats[item._id] = item.totalSpent;
+      }
     });
 
+    // 4. Define limits
     const budgetLimits = {
       needs: totalIncome * 0.5,
       wants: totalIncome * 0.3,
       savings: totalIncome * 0.2,
     };
 
+    // 5. Compute usage %
     const budgetUsage = {
-      needs: ((budgetStats.needs / budgetLimits.needs) * 100).toFixed(2) || 0,
-      wants: ((budgetStats.wants / budgetLimits.wants) * 100).toFixed(2) || 0,
-      savings: ((budgetStats.savings / budgetLimits.savings) * 100).toFixed(2) || 0,
+      needs:
+        budgetLimits.needs > 0
+          ? ((budgetStats.needs / budgetLimits.needs) * 100).toFixed(2)
+          : "0",
+      wants:
+        budgetLimits.wants > 0
+          ? ((budgetStats.wants / budgetLimits.wants) * 100).toFixed(2)
+          : "0",
+      savings:
+        budgetLimits.savings > 0
+          ? ((budgetStats.savings / budgetLimits.savings) * 100).toFixed(2)
+          : "0",
     };
 
     res.status(200).json({ budgetStats, budgetUsage });
@@ -116,6 +143,7 @@ exports.getBudgetStats = async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 };
+
 
 // ✅ Group daily expense totals
 exports.getDailyExpenses = async (req, res) => {
