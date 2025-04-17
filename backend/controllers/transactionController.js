@@ -81,33 +81,31 @@ exports.deleteTransaction = async (req, res) => {
 exports.getBudgetStats = async (req, res) => {
   try {
     const userId = req.user;
-    console.log("🔐 User ID from token:", userId);
+    const objectUserId = new mongoose.Types.ObjectId(userId); // ✅ convert to ObjectId
 
-    // DEBUG: See all transactions
+    // 🔍 All Transactions Debug
     const all = await Transaction.find({ userId });
     console.log("🧾 All Transactions:", all);
 
-    const missing = all.filter(
-      (t) => t.type !== "income" && !t.budgetCategory
-    );
+    const missing = all.filter((t) => t.type !== "income" && !t.budgetCategory);
     if (missing.length > 0) {
       console.warn("⚠️ Transactions missing budgetCategory:", missing);
     }
 
-    // ✅ 1. Total Income
+    // ✅ 1. Get total income
     const incomeResult = await Transaction.aggregate([
-      { $match: { userId, type: "income" } },
+      { $match: { userId: objectUserId, type: "income" } },
       { $group: { _id: null, totalIncome: { $sum: "$amount" } } },
     ]);
 
     const totalIncome = incomeResult.length > 0 ? incomeResult[0].totalIncome : 0;
     console.log("💰 Total Income:", totalIncome);
 
-    // ✅ 2. Total expenses grouped by budget category
+    // ✅ 2. Get grouped spending for needs/wants/savings
     const groupedExpenses = await Transaction.aggregate([
       {
         $match: {
-          userId,
+          userId: objectUserId,
           type: { $in: ["expense", "savings"] },
           budgetCategory: { $in: ["needs", "wants", "savings"] },
         },
@@ -122,14 +120,20 @@ exports.getBudgetStats = async (req, res) => {
 
     console.log("📊 Grouped Expense Result:", groupedExpenses);
 
-    const budgetStats = { totalIncome, needs: 0, wants: 0, savings: 0 };
+    const budgetStats = {
+      totalIncome,
+      needs: 0,
+      wants: 0,
+      savings: 0,
+    };
+
     groupedExpenses.forEach((item) => {
       if (budgetStats.hasOwnProperty(item._id)) {
         budgetStats[item._id] = item.totalSpent;
       }
     });
 
-    // ✅ 3. Usage percentage based on 50-30-20 rule
+    // ✅ 3. Budget usage % (based on 50/30/20 rule)
     const budgetLimits = {
       needs: totalIncome * 0.5,
       wants: totalIncome * 0.3,
@@ -151,7 +155,6 @@ exports.getBudgetStats = async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 };
-
 
 
 
