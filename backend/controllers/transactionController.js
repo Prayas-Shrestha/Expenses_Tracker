@@ -3,11 +3,13 @@ const Transaction = require("../models/Transaction");
 // ✅ Add a new transaction (income, expense, or savings)
 exports.addTransaction = async (req, res) => {
   try {
-    const { type, category, amount, date, budgetCategory } = req.body;
+    const { type, category, amount, date, note, budgetCategory } = req.body;
 
-    // Require budget category for non-income transactions
-    if (type !== "income" && !budgetCategory) {
-      return res.status(400).json({ msg: "Budget category (needs, wants, savings) is required" });
+    // Validate budget category for non-income types
+    if (type !== "income" && !["needs", "wants", "savings"].includes(budgetCategory)) {
+      return res.status(400).json({
+        msg: "budgetCategory is required for expense/savings and must be one of: needs, wants, savings",
+      });
     }
 
     const transaction = new Transaction({
@@ -15,11 +17,13 @@ exports.addTransaction = async (req, res) => {
       type,
       category,
       amount,
-      budgetCategory: type === "income" ? null : budgetCategory,
+      note,
+      budgetCategory: type === "income" ? undefined : budgetCategory,
       date: date || new Date(),
     });
 
     await transaction.save();
+    console.log("✅ Transaction added:", transaction);
     res.status(201).json({ msg: "Transaction added successfully", transaction });
   } catch (error) {
     console.error("❌ Add Transaction Error:", error.message);
