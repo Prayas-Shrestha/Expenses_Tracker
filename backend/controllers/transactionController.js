@@ -79,20 +79,32 @@ exports.getBudgetStats = async (req, res) => {
     const userId = req.user;
     console.log("🔐 User ID from token:", userId);
 
-    // 1. Total income
+    // DEBUG: See all transactions
+    const all = await Transaction.find({ userId });
+    console.log("🧾 All Transactions:", all);
+
+    const missing = all.filter(
+      (t) => t.type !== "income" && !t.budgetCategory
+    );
+    if (missing.length > 0) {
+      console.warn("⚠️ Transactions missing budgetCategory:", missing);
+    }
+
+    // ✅ 1. Total Income
     const incomeResult = await Transaction.aggregate([
       { $match: { userId, type: "income" } },
-      { $group: { _id: null, totalIncome: { $sum: "$amount" } } }
+      { $group: { _id: null, totalIncome: { $sum: "$amount" } } },
     ]);
-    console.log("💰 Income Aggregate Result:", incomeResult);
 
     const totalIncome = incomeResult.length > 0 ? incomeResult[0].totalIncome : 0;
+    console.log("💰 Total Income:", totalIncome);
 
-    // 2. Group by budgetCategory
-    const groupedResult = await Transaction.aggregate([
+    // ✅ 2. Total expenses grouped by budget category
+    const groupedExpenses = await Transaction.aggregate([
       {
         $match: {
           userId,
+          type: { $in: ["expense", "savings"] },
           budgetCategory: { $in: ["needs", "wants", "savings"] },
         },
       },
@@ -103,15 +115,17 @@ exports.getBudgetStats = async (req, res) => {
         },
       },
     ]);
-    console.log("📊 Grouped Expense Result:", groupedResult);
+
+    console.log("📊 Grouped Expense Result:", groupedExpenses);
 
     const budgetStats = { totalIncome, needs: 0, wants: 0, savings: 0 };
-    groupedResult.forEach((item) => {
+    groupedExpenses.forEach((item) => {
       if (budgetStats.hasOwnProperty(item._id)) {
         budgetStats[item._id] = item.totalSpent;
       }
     });
 
+    // ✅ 3. Usage percentage based on 50-30-20 rule
     const budgetLimits = {
       needs: totalIncome * 0.5,
       wants: totalIncome * 0.3,
@@ -133,6 +147,7 @@ exports.getBudgetStats = async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 };
+
 
 
 
