@@ -296,3 +296,116 @@ exports.getTransactionsByDate = async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 };
+
+// ✅ Daily Chart Data for PieChart
+exports.getChartsDaily = async (req, res) => {
+  try {
+    const userId = req.user;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+
+    const daily = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          date: { $gte: today, $lte: end },
+          type: "expense",
+        },
+      },
+      {
+        $group: {
+          _id: "$category",
+          total: { $sum: { $abs: "$amount" } },
+        },
+      },
+    ]);
+
+    const formatted = daily.map((item) => ({
+      category: item._id || "Others",
+      total: item.total,
+    }));
+
+    res.status(200).json(formatted);
+  } catch (error) {
+    console.error("❌ Daily Chart Error:", error.message);
+    res.status(500).json({ msg: "Server error" });
+  }
+};
+
+// ✅ Monthly Chart Data for PieChart
+exports.getChartsMonthly = async (req, res) => {
+  try {
+    const userId = req.user;
+
+    const monthly = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: "expense",
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$date" },
+            month: { $month: "$date" },
+          },
+          total: { $sum: { $abs: "$amount" } },
+        },
+      },
+      { $sort: { "_id.year": -1, "_id.month": -1 } },
+    ]);
+
+    const formatted = monthly.map((item) => ({
+      month: `${item._id.month}/${item._id.year}`,
+      total: item.total,
+    }));
+
+    res.status(200).json(formatted);
+  } catch (error) {
+    console.error("❌ Monthly Chart Error:", error.message);
+    res.status(500).json({ msg: "Server error" });
+  }
+};
+
+// ✅ Yearly Chart Data for PieChart
+exports.getChartsYearly = async (req, res) => {
+  try {
+    const userId = req.user;
+
+    const yearly = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: { $in: ["expense", "savings"] },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$date" },
+            budgetCategory: "$budgetCategory",
+          },
+          total: { $sum: { $abs: "$amount" } },
+        },
+      },
+    ]);
+
+    const grouped = {};
+    yearly.forEach(({ _id, total }) => {
+      const { year, budgetCategory } = _id;
+      if (!grouped[year]) grouped[year] = { year, needs: 0, wants: 0, savings: 0 };
+      if (["needs", "wants", "savings"].includes(budgetCategory)) {
+        grouped[year][budgetCategory] += total;
+      }
+    });
+
+    const formatted = Object.values(grouped).sort((a, b) => b.year - a.year);
+    res.status(200).json(formatted);
+  } catch (error) {
+    console.error("❌ Yearly Chart Error:", error.message);
+    res.status(500).json({ msg: "Server error" });
+  }
+};
