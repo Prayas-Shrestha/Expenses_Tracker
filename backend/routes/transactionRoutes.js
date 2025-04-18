@@ -13,7 +13,8 @@ const {
   getBudgetStats,
   getDailyExpenses,
   getMonthlyExpenses,
-  getYearlyExpenses
+  getYearlyExpenses,
+  getTransactionsByDate
 } = require("../controllers/transactionController");
 
 // 🔐 All routes below require JWT authentication
@@ -42,5 +43,9 @@ router.get("/expenses/monthly", getMonthlyExpenses);
 
 // 📈 Yearly spending breakdown
 router.get("/expenses/yearly", getYearlyExpenses);
+
+// 📅 Get transactions for a specific date
+router.get("/date/:date", getTransactionsByDate);
+
 
 module.exports = router;
