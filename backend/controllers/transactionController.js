@@ -1,15 +1,20 @@
 const mongoose = require("mongoose");
 const Transaction = require("../models/Transaction");
 
-// ✅ Add Transaction
-const addTransaction = async (req, res) => {
+// ✅ Add a new transaction (income, expense, or savings)
+exports.addTransaction = async (req, res) => {
   try {
     const { type, category, amount, date, note, budgetCategory } = req.body;
+
+    // Validate budget category for non-income types
     if (type !== "income" && !["needs", "wants", "savings"].includes(budgetCategory)) {
-      return res.status(400).json({ msg: "budgetCategory is required for expense/savings and must be one of: needs, wants, savings" });
+      return res.status(400).json({
+        msg: "budgetCategory is required for expense/savings and must be one of: needs, wants, savings",
+      });
     }
+
     const transaction = new Transaction({
-      userId: req.user,
+      userId: req.user, // From auth middleware
       type,
       category,
       amount,
@@ -17,7 +22,9 @@ const addTransaction = async (req, res) => {
       budgetCategory: type === "income" ? undefined : budgetCategory,
       date: date || new Date(),
     });
+
     await transaction.save();
+    console.log("✅ Transaction added:", transaction);
     res.status(201).json({ msg: "Transaction added successfully", transaction });
   } catch (error) {
     console.error("❌ Add Transaction Error:", error.message);
@@ -25,16 +32,18 @@ const addTransaction = async (req, res) => {
   }
 };
 
-// ✅ Update Transaction
-const updateTransaction = async (req, res) => {
+exports.updateTransaction = async (req, res) => {
   try {
     const { amount, category, note, date, budgetCategory } = req.body;
+
     const updated = await Transaction.findOneAndUpdate(
       { _id: req.params.id, userId: req.user },
       { amount, category, note, date, budgetCategory },
       { new: true }
     );
+
     if (!updated) return res.status(404).json({ msg: "Transaction not found" });
+
     res.status(200).json({ msg: "Transaction updated", transaction: updated });
   } catch (err) {
     console.error("❌ Update Transaction Error:", err.message);
@@ -42,21 +51,8 @@ const updateTransaction = async (req, res) => {
   }
 };
 
-// ✅ Delete Transaction
-const deleteTransaction = async (req, res) => {
-  try {
-    const transaction = await Transaction.findOne({ _id: req.params.id, userId: req.user });
-    if (!transaction) return res.status(404).json({ msg: "Transaction not found" });
-    await Transaction.findByIdAndDelete(req.params.id);
-    res.status(200).json({ msg: "Transaction deleted successfully" });
-  } catch (error) {
-    console.error("❌ Delete Transaction Error:", error.message);
-    res.status(500).json({ msg: "Server error" });
-  }
-};
-
-// ✅ Get All Transactions
-const getTransactions = async (req, res) => {
+// ✅ Get all transactions for the logged-in user
+exports.getTransactions = async (req, res) => {
   try {
     const transactions = await Transaction.find({ userId: req.user }).sort({ date: -1 });
     res.status(200).json(transactions);
@@ -66,100 +62,137 @@ const getTransactions = async (req, res) => {
   }
 };
 
-// ✅ Budget Stats (for Progress Bar)
-const getBudgetStats = async (req, res) => {
+// ✅ Delete a transaction (only if it belongs to the user)
+exports.deleteTransaction = async (req, res) => {
   try {
-    const userId = new mongoose.Types.ObjectId(req.user);
+    const transaction = await Transaction.findOne({ _id: req.params.id, userId: req.user });
+
+    if (!transaction) {
+      return res.status(404).json({ msg: "Transaction not found" });
+    }
+
+    await Transaction.findByIdAndDelete(req.params.id);
+    res.status(200).json({ msg: "Transaction deleted successfully" });
+  } catch (error) {
+    console.error("❌ Delete Transaction Error:", error.message);
+    res.status(500).json({ msg: "Server error" });
+  }
+};
+
+exports.getBudgetStats = async (req, res) => {
+  try {
+    const userId = req.user;
+    const objectUserId = new mongoose.Types.ObjectId(userId); // ✅ convert to ObjectId
+
+    // 🔍 All Transactions Debug
+    const all = await Transaction.find({ userId });
+    console.log("🧾 All Transactions:", all);
+
+    const missing = all.filter((t) => t.type !== "income" && !t.budgetCategory);
+    if (missing.length > 0) {
+      console.warn("⚠️ Transactions missing budgetCategory:", missing);
+    }
+
+    // ✅ 1. Get total income
     const incomeResult = await Transaction.aggregate([
-      { $match: { userId, type: "income" } },
+      { $match: { userId: objectUserId, type: "income" } },
       { $group: { _id: null, totalIncome: { $sum: "$amount" } } },
     ]);
-    const totalIncome = incomeResult.length ? incomeResult[0].totalIncome : 0;
 
+    const totalIncome = incomeResult.length > 0 ? incomeResult[0].totalIncome : 0;
+    console.log("💰 Total Income:", totalIncome);
+
+    // ✅ 2. Get grouped spending for needs/wants/savings
     const groupedExpenses = await Transaction.aggregate([
-      { $match: { userId, type: { $in: ["expense", "savings"] }, budgetCategory: { $in: ["needs", "wants", "savings"] } } },
-      { $group: { _id: "$budgetCategory", totalSpent: { $sum: "$amount" } } },
+      {
+        $match: {
+          userId: objectUserId,
+          type: { $in: ["expense", "savings"] },
+          budgetCategory: { $in: ["needs", "wants", "savings"] },
+        },
+      },
+      {
+        $group: {
+          _id: "$budgetCategory",
+          totalSpent: { $sum: "$amount" },
+        },
+      },
     ]);
 
-    const budgetStats = { totalIncome, needs: 0, wants: 0, savings: 0 };
+    console.log("📊 Grouped Expense Result:", groupedExpenses);
+
+    const budgetStats = {
+      totalIncome,
+      needs: 0,
+      wants: 0,
+      savings: 0,
+    };
+
     groupedExpenses.forEach((item) => {
-      if (budgetStats.hasOwnProperty(item._id)) budgetStats[item._id] = item.totalSpent;
+      if (budgetStats.hasOwnProperty(item._id)) {
+        budgetStats[item._id] = item.totalSpent;
+      }
     });
 
+    // ✅ 3. Budget usage % (based on 50/30/20 rule)
     const budgetLimits = {
       needs: totalIncome * 0.5,
       wants: totalIncome * 0.3,
       savings: totalIncome * 0.2,
     };
+
     const budgetUsage = {
-      needs: ((budgetStats.needs / budgetLimits.needs) * 100 || 0).toFixed(2),
-      wants: ((budgetStats.wants / budgetLimits.wants) * 100 || 0).toFixed(2),
-      savings: ((budgetStats.savings / budgetLimits.savings) * 100 || 0).toFixed(2),
+      needs: budgetLimits.needs ? ((budgetStats.needs / budgetLimits.needs) * 100).toFixed(2) : "0",
+      wants: budgetLimits.wants ? ((budgetStats.wants / budgetLimits.wants) * 100).toFixed(2) : "0",
+      savings: budgetLimits.savings ? ((budgetStats.savings / budgetLimits.savings) * 100).toFixed(2) : "0",
     };
+
+    console.log("✅ Final Budget Stats:", budgetStats);
+    console.log("📈 Budget Usage %:", budgetUsage);
 
     res.status(200).json({ budgetStats, budgetUsage });
   } catch (err) {
-    console.error("❌ Budget Stats Error:", err.message);
+    console.error("❌ Budget Stats Server Error:", err.message);
     res.status(500).json({ msg: "Server error" });
   }
 };
 
-// ✅ Transactions by Date
-const getTransactionsByDate = async (req, res) => {
-  try {
-    const userId = req.user;
-    const { date } = req.params;
-    const start = new Date(date);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(date);
-    end.setHours(23, 59, 59, 999);
-    const transactions = await Transaction.find({ userId, date: { $gte: start, $lte: end } }).sort({ date: -1 });
-    res.status(200).json(transactions);
-  } catch (error) {
-    console.error("❌ Date Filter Error:", error.message);
-    res.status(500).json({ msg: "Server error" });
-  }
-};
 
-// ✅ Daily Chart Data
-const getChartsDaily = async (req, res) => {
+
+// ✅ Group daily expense totals
+exports.getDailyExpenses = async (req, res) => {
   try {
     const userId = req.user;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
-    const daily = await Transaction.aggregate([
-      {
-        $match: {
-          userId: new mongoose.Types.ObjectId(userId),
-          date: { $gte: today, $lte: end },
-          type: "expense",
-        },
-      },
+
+    const dailyExpenses = await Transaction.aggregate([
+      { $match: { userId, type: "expense" } },
       {
         $group: {
-          _id: "$category",
-          total: { $sum: { $abs: "$amount" } },
-        },
+          _id: {
+            year: { $year: "$date" },
+            month: { $month: "$date" },
+            day: { $dayOfMonth: "$date" }
+          },
+          total: { $sum: "$amount" },
+        }
       },
+      { $sort: { "_id": -1 } }
     ]);
-    const formatted = daily.map((item) => ({
-      category: item._id || "Others",
-      total: item.total,
-    }));
-    res.status(200).json(formatted);
+
+    res.json(dailyExpenses);
   } catch (error) {
-    console.error("❌ Daily Chart Error:", error.message);
+    console.error("❌ Daily Expenses Error:", error.message);
     res.status(500).json({ msg: "Server error" });
   }
 };
 
-// ✅ Monthly Chart Data
-const getChartsMonthly = async (req, res) => {
+// ✅ Group monthly expense total
+// ✅ Group monthly expense totals (with abs)
+exports.getMonthlyExpenses = async (req, res) => {
   try {
     const userId = req.user;
-    const monthly = await Transaction.aggregate([
+
+    const monthlyExpenses = await Transaction.aggregate([
       {
         $match: {
           userId: new mongoose.Types.ObjectId(userId),
@@ -177,63 +210,89 @@ const getChartsMonthly = async (req, res) => {
       },
       { $sort: { "_id.year": -1, "_id.month": -1 } },
     ]);
-    const formatted = monthly.map((item) => ({
-      month: `${item._id.month}/${item._id.year}`,
-      total: item.total,
-    }));
-    res.status(200).json(formatted);
+
+    res.status(200).json(monthlyExpenses);
   } catch (error) {
-    console.error("❌ Monthly Chart Error:", error.message);
+    console.error("❌ Monthly Expenses Error:", error.message);
     res.status(500).json({ msg: "Server error" });
   }
 };
 
-// ✅ Yearly Chart Data
-const getChartsYearly = async (req, res) => {
+// ✅ Group yearly expenses + savings + income
+exports.getYearlyExpenses = async (req, res) => {
   try {
     const userId = req.user;
+
     const yearly = await Transaction.aggregate([
       {
         $match: {
           userId: new mongoose.Types.ObjectId(userId),
-          type: { $in: ["expense", "savings"] },
+          type: { $in: ["income", "expense", "savings"] },
         },
       },
       {
         $group: {
           _id: {
             year: { $year: "$date" },
+            type: "$type",
             budgetCategory: "$budgetCategory",
           },
           total: { $sum: { $abs: "$amount" } },
         },
       },
     ]);
-    const grouped = {};
+
+    // Format result as { year, income, needs, wants, savings }
+    const result = {};
+
     yearly.forEach(({ _id, total }) => {
-      const { year, budgetCategory } = _id;
-      if (!grouped[year]) grouped[year] = { year, needs: 0, wants: 0, savings: 0 };
-      if (["needs", "wants", "savings"].includes(budgetCategory)) {
-        grouped[year][budgetCategory] += total;
+      const { year, type, budgetCategory } = _id;
+
+      if (!result[year]) {
+        result[year] = { year, income: 0, needs: 0, wants: 0, savings: 0 };
+      }
+
+      if (type === "income") {
+        result[year].income += total;
+      } else if (type === "expense" && budgetCategory) {
+        result[year][budgetCategory] += total;
+      } else if (type === "savings") {
+        result[year].savings += total;
       }
     });
-    const formatted = Object.values(grouped).sort((a, b) => b.year - a.year);
+
+    const formatted = Object.values(result).sort((a, b) => b.year - a.year);
     res.status(200).json(formatted);
   } catch (error) {
-    console.error("❌ Yearly Chart Error:", error.message);
+    console.error("❌ Yearly Expenses Error:", error.message);
     res.status(500).json({ msg: "Server error" });
   }
 };
 
-// ✅ Export everything properly
-module.exports = {
-  addTransaction,
-  updateTransaction,
-  deleteTransaction,
-  getTransactions,
-  getBudgetStats,
-  getTransactionsByDate,
-  getChartsDaily,
-  getChartsMonthly,
-  getChartsYearly,
+
+
+// ✅ Get all transactions for a specific date
+exports.getTransactionsByDate = async (req, res) => {
+  try {
+    const userId = req.user;
+    const { date } = req.params;
+
+    if (!date) return res.status(400).json({ msg: "Date is required" });
+
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+
+    const transactions = await Transaction.find({
+      userId,
+      date: { $gte: start, $lte: end },
+    }).sort({ date: -1 });
+
+    res.status(200).json(transactions);
+  } catch (error) {
+    console.error("❌ Error fetching transactions by date:", error.message);
+    res.status(500).json({ msg: "Server error" });
+  }
 };
