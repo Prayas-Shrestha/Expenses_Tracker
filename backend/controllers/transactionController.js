@@ -104,8 +104,33 @@ exports.getBudgetStats = async (req, res) => {
   }
 };
 
-// Daily Chart Data
-exports.getDailyChart = async (req, res) => {
+
+// Transactions by date
+exports.getTransactionsByDate = async (req, res) => {
+  try {
+    const userId = req.user;
+    const { date } = req.params;
+    if (!date) return res.status(400).json({ msg: "Date is required" });
+
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+
+    const transactions = await Transaction.find({
+      userId,
+      date: { $gte: start, $lte: end },
+    }).sort({ date: -1 });
+
+    res.status(200).json(transactions);
+  } catch (error) {
+    console.error("❌ Error fetching transactions by date:", error.message);
+    res.status(500).json({ msg: "Server error" });
+  }
+};
+
+// ✅ Daily chart summary for PieChart
+exports.getChartsDaily = async (req, res) => {
   try {
     const userId = req.user;
 
@@ -114,7 +139,7 @@ exports.getDailyChart = async (req, res) => {
     const end = new Date();
     end.setHours(23, 59, 59, 999);
 
-    const transactions = await Transaction.aggregate([
+    const daily = await Transaction.aggregate([
       {
         $match: {
           userId: new mongoose.Types.ObjectId(userId),
@@ -130,9 +155,9 @@ exports.getDailyChart = async (req, res) => {
       },
     ]);
 
-    const formatted = transactions.map((t) => ({
-      category: t._id || "Others",
-      total: t.total,
+    const formatted = daily.map((item) => ({
+      category: item._id || "Others",
+      total: item.total,
     }));
 
     res.status(200).json(formatted);
@@ -142,9 +167,8 @@ exports.getDailyChart = async (req, res) => {
   }
 };
 
-
-// Monthly Chart Data
-exports.getMonthlyChart = async (req, res) => {
+// ✅ Monthly chart summary
+exports.getChartsMonthly = async (req, res) => {
   try {
     const userId = req.user;
 
@@ -179,9 +203,8 @@ exports.getMonthlyChart = async (req, res) => {
   }
 };
 
-
-// Yearly Chart Data
-exports.getYearlyChart = async (req, res) => {
+// ✅ Yearly chart summary
+exports.getChartsYearly = async (req, res) => {
   try {
     const userId = req.user;
 
@@ -207,13 +230,11 @@ exports.getYearlyChart = async (req, res) => {
 
     yearly.forEach(({ _id, total }) => {
       const { year, budgetCategory } = _id;
-
       if (!grouped[year]) {
-        grouped[year] = { year, total: 0 };
+        grouped[year] = { year, needs: 0, wants: 0, savings: 0 };
       }
-
       if (["needs", "wants", "savings"].includes(budgetCategory)) {
-        grouped[year].total += total;
+        grouped[year][budgetCategory] += total;
       }
     });
 
@@ -225,27 +246,3 @@ exports.getYearlyChart = async (req, res) => {
   }
 };
 
-
-// Transactions by date
-exports.getTransactionsByDate = async (req, res) => {
-  try {
-    const userId = req.user;
-    const { date } = req.params;
-    if (!date) return res.status(400).json({ msg: "Date is required" });
-
-    const start = new Date(date);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(date);
-    end.setHours(23, 59, 59, 999);
-
-    const transactions = await Transaction.find({
-      userId,
-      date: { $gte: start, $lte: end },
-    }).sort({ date: -1 });
-
-    res.status(200).json(transactions);
-  } catch (error) {
-    console.error("❌ Error fetching transactions by date:", error.message);
-    res.status(500).json({ msg: "Server error" });
-  }
-};
