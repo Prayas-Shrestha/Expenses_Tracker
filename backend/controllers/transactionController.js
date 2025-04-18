@@ -187,51 +187,66 @@ exports.getDailyExpenses = async (req, res) => {
 };
 
 // ✅ Group monthly expense total
+// ✅ Group monthly expense totals (with abs)
 exports.getMonthlyExpenses = async (req, res) => {
   try {
     const userId = req.user;
 
     const monthlyExpenses = await Transaction.aggregate([
-      { $match: { userId, type: "expense" } },
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: "expense",
+        },
+      },
       {
         $group: {
           _id: {
             year: { $year: "$date" },
-            month: { $month: "$date" }
+            month: { $month: "$date" },
           },
-          total: { $sum: "$amount" },
-        }
+          total: { $sum: { $abs: "$amount" } },
+        },
       },
-      { $sort: { "_id": -1 } }
+      { $sort: { "_id.year": -1, "_id.month": -1 } },
     ]);
 
-    res.json(monthlyExpenses);
+    res.status(200).json(monthlyExpenses);
   } catch (error) {
     console.error("❌ Monthly Expenses Error:", error.message);
     res.status(500).json({ msg: "Server error" });
   }
 };
 
+// ✅ Group yearly expenses + savings + income
 exports.getYearlyExpenses = async (req, res) => {
   try {
     const userId = req.user;
 
     const yearly = await Transaction.aggregate([
-      { $match: { userId, type: { $in: ["income", "expense", "savings"] } } },
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: { $in: ["income", "expense", "savings"] },
+        },
+      },
       {
         $group: {
-          _id: { year: { $year: "$date" }, type: "$type", budgetCategory: "$budgetCategory" },
-          total: { $sum: "$amount" }
-        }
-      }
+          _id: {
+            year: { $year: "$date" },
+            type: "$type",
+            budgetCategory: "$budgetCategory",
+          },
+          total: { $sum: { $abs: "$amount" } },
+        },
+      },
     ]);
 
-    // Organize the result by year
+    // Format result as { year, income, needs, wants, savings }
     const result = {};
+
     yearly.forEach(({ _id, total }) => {
-      const year = _id.year;
-      const type = _id.type;
-      const budgetCategory = _id.budgetCategory;
+      const { year, type, budgetCategory } = _id;
 
       if (!result[year]) {
         result[year] = { year, income: 0, needs: 0, wants: 0, savings: 0 };
@@ -240,20 +255,20 @@ exports.getYearlyExpenses = async (req, res) => {
       if (type === "income") {
         result[year].income += total;
       } else if (type === "expense" && budgetCategory) {
-        result[year][budgetCategory] += Math.abs(total);
+        result[year][budgetCategory] += total;
       } else if (type === "savings") {
-        result[year].savings += Math.abs(total);
+        result[year].savings += total;
       }
     });
 
     const formatted = Object.values(result).sort((a, b) => b.year - a.year);
     res.status(200).json(formatted);
-
   } catch (error) {
-    console.error("❌ Yearly Stats Error:", error.message);
+    console.error("❌ Yearly Expenses Error:", error.message);
     res.status(500).json({ msg: "Server error" });
   }
 };
+
 
 
 // ✅ Get all transactions for a specific date
