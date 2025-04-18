@@ -2,11 +2,12 @@ const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middleware/authMiddleware");
 
+// Controller imports
 const {
   addTransaction,
   getTransactions,
-  deleteTransaction,
   updateTransaction,
+  deleteTransaction,
   getBudgetStats,
   getDailyExpenses,
   getMonthlyExpenses,
@@ -14,24 +15,38 @@ const {
   getTransactionsByDate,
   getChartsDaily,
   getChartsMonthly,
-  getChartsYearly, // ✅ Add these
+  getChartsYearly,
 } = require("../controllers/transactionController");
 
+// 🔐 Apply JWT Auth Middleware to all routes
 router.use(authMiddleware);
 
+// ➕ Add a new transaction
 router.post("/", addTransaction);
+
+// 📥 Get all transactions for the logged-in user
 router.get("/", getTransactions);
+
+// ✏️ Update a transaction
 router.put("/:id", updateTransaction);
+
+// ❌ Delete a transaction by ID
 router.delete("/:id", deleteTransaction);
+
+// 📊 Budget usage for progress bar (50/30/20 logic)
 router.get("/budget", getBudgetStats);
-router.get("/expenses/daily", getDailyExpenses);
-router.get("/expenses/monthly", getMonthlyExpenses);
-router.get("/expenses/yearly", getYearlyExpenses);
+
+// 📅 Get transactions for a specific date (YYYY-MM-DD)
 router.get("/date/:date", getTransactionsByDate);
 
-// ✅ Chart endpoints for frontend pie chart
-router.get("/charts/daily", getChartsDaily);
-router.get("/charts/monthly", getChartsMonthly);
-router.get("/charts/yearly", getChartsYearly);
+// 📈 Expense summaries
+router.get("/expenses/daily", getDailyExpenses);     // Grouped by day
+router.get("/expenses/monthly", getMonthlyExpenses); // Grouped by month
+router.get("/expenses/yearly", getYearlyExpenses);   // Grouped by year
+
+// 📊 Chart-friendly endpoints
+router.get("/charts/daily", getChartsDaily);         // Category-wise for today
+router.get("/charts/monthly", getChartsMonthly);     // Monthly totals
+router.get("/charts/yearly", getChartsYearly);       // Needs/Wants/Savings per year
 
 module.exports = router;
