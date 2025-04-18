@@ -65,107 +65,116 @@ exports.deleteTransaction = async (req, res) => {
   }
 };
 
-// ✅ Get daily expenses for chart
+// ✅ Daily Expenses - categorized and properly filtered
 exports.getDailyExpenses = async (req, res) => {
   try {
-    const userId = new mongoose.Types.ObjectId(req.user);
+    const userId = req.user;
 
-    const result = await Transaction.aggregate([
-      { $match: { userId, type: "expense" } },
-      {
-        $group: {
-          _id: {
-            day: { $dayOfMonth: "$date" },
-            month: { $month: "$date" },
-            year: { $year: "$date" },
-            category: "$category"
-          },
-          total: { $sum: { $abs: "$amount" } },
-          latestDate: { $max: "$date" }
-        }
-      },
-      { $sort: { "latestDate": -1 } }
-    ]);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
 
-    res.status(200).json(result);
-  } catch (error) {
-    console.error("❌ Daily Expenses Error:", error.message);
-    res.status(500).json({ msg: "Server error" });
-  }
-};
-
-// ✅ Get monthly expenses for chart
-exports.getMonthlyExpenses = async (req, res) => {
-  try {
-    const userId = new mongoose.Types.ObjectId(req.user);
-
-    const result = await Transaction.aggregate([
-      { $match: { userId, type: "expense" } },
-      {
-        $group: {
-          _id: {
-            month: { $month: "$date" },
-            year: { $year: "$date" }
-          },
-          total: { $sum: { $abs: "$amount" } }
-        }
-      },
-      { $sort: { "_id.year": -1, "_id.month": -1 } }
-    ]);
-
-    res.status(200).json(result);
-  } catch (error) {
-    console.error("❌ Monthly Expenses Error:", error.message);
-    res.status(500).json({ msg: "Server error" });
-  }
-};
-
-// ✅ Get yearly breakdown (needs/wants/savings/income)
-exports.getYearlyExpenses = async (req, res) => {
-  try {
-    const userId = new mongoose.Types.ObjectId(req.user);
-
-    const result = await Transaction.aggregate([
+    const transactions = await Transaction.aggregate([
       {
         $match: {
-          userId,
-          type: { $in: ["income", "expense", "savings"] },
-        }
+          userId: new mongoose.Types.ObjectId(userId),
+          date: { $gte: today, $lte: end },
+          type: "expense",
+        },
+      },
+      {
+        $group: {
+          _id: "$category",
+          total: { $sum: { $abs: "$amount" } },
+        },
+      },
+    ]);
+
+    const formatted = transactions.map((t) => ({
+      category: t._id || "Others",
+      total: t.total,
+    }));
+
+    res.status(200).json(formatted);
+  } catch (error) {
+    console.error("❌ Daily Chart Error:", error.message);
+    res.status(500).json({ msg: "Server error" });
+  }
+};
+
+// ✅ Monthly Expenses Grouped by Month
+exports.getMonthlyExpenses = async (req, res) => {
+  try {
+    const userId = req.user;
+
+    const monthly = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: "expense",
+        },
       },
       {
         $group: {
           _id: {
             year: { $year: "$date" },
-            type: "$type",
-            budgetCategory: "$budgetCategory"
+            month: { $month: "$date" },
           },
-          total: { $sum: { $abs: "$amount" } }
-        }
-      }
+          total: { $sum: { $abs: "$amount" } },
+        },
+      },
+      { $sort: { "_id.year": -1, "_id.month": -1 } },
     ]);
 
-    const yearly = {};
+    res.status(200).json(monthly);
+  } catch (error) {
+    console.error("❌ Monthly Chart Error:", error.message);
+    res.status(500).json({ msg: "Server error" });
+  }
+};
 
-    result.forEach(({ _id, total }) => {
-      const { year, type, budgetCategory } = _id;
+// ✅ Yearly Expenses by Budget Category
+exports.getYearlyExpenses = async (req, res) => {
+  try {
+    const userId = req.user;
 
-      if (!yearly[year]) {
-        yearly[year] = { year, income: 0, needs: 0, wants: 0, savings: 0 };
+    const yearly = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: { $in: ["expense", "savings"] },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$date" },
+            budgetCategory: "$budgetCategory",
+          },
+          total: { $sum: { $abs: "$amount" } },
+        },
+      },
+    ]);
+
+    const grouped = {};
+
+    yearly.forEach(({ _id, total }) => {
+      const { year, budgetCategory } = _id;
+
+      if (!grouped[year]) {
+        grouped[year] = { year, needs: 0, wants: 0, savings: 0 };
       }
 
-      if (type === "income") {
-        yearly[year].income += total;
-      } else if (type === "expense" && budgetCategory) {
-        yearly[year][budgetCategory] += total;
-      } else if (type === "savings") {
-        yearly[year].savings += total;
+      if (["needs", "wants", "savings"].includes(budgetCategory)) {
+        grouped[year][budgetCategory] += total;
       }
     });
 
-    const formatted = Object.values(yearly).sort((a, b) => b.year - a.year);
+    const formatted = Object.values(grouped).sort((a, b) => b.year - a.year);
     res.status(200).json(formatted);
   } catch (error) {
-    console.error("❌ Yearly Expenses Error:", error.message);
+    console.error("❌ Yearly Chart Error:", error.message);
     res.status(500).json({ msg: "Server error" });
   }
 };
