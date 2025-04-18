@@ -1,10 +1,6 @@
 const express = require("express");
 const router = express.Router();
-
-// Middleware to protect routes
 const authMiddleware = require("../middleware/authMiddleware");
-
-// Controller functions 1
 const {
   addTransaction,
   getTransactions,
@@ -17,35 +13,34 @@ const {
   getTransactionsByDate
 } = require("../controllers/transactionController");
 
-// 🔐 All routes below require JWT authentication
+// 🔐 Protect all routes
 router.use(authMiddleware);
 
-// ➕ Add a new transaction (income/expense/savings)
+// ➕ Add transaction
 router.post("/", addTransaction);
 
-// 📥 Get all transactions for the logged-in user
+// 📥 Get all
 router.get("/", getTransactions);
 
-// ❌ Delete a transaction by ID
+// ✏️ Update
+router.put("/:id", updateTransaction);
+
+// ❌ Delete
 router.delete("/:id", deleteTransaction);
 
-// 📊 Get budget stats based on 50/30/20 rule
+// 📊 Budget (progress bar)
 router.get("/budget", getBudgetStats);
 
-// 📆 Daily spending breakdown
+// 📆 Daily expenses
 router.get("/expenses/daily", getDailyExpenses);
 
-router.put("/:id", authMiddleware, updateTransaction);
-
-
-// 📅 Monthly spending breakdown
+// 📅 Monthly expenses
 router.get("/expenses/monthly", getMonthlyExpenses);
 
-// 📈 Yearly spending breakdown
+// 📈 Yearly summary
 router.get("/expenses/yearly", getYearlyExpenses);
 
-// 📅 Get transactions for a specific date
+// 📅 Specific day transactions
 router.get("/date/:date", getTransactionsByDate);
-
 
 module.exports = router;
