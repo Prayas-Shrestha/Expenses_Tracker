@@ -41,9 +41,4 @@ router.get("/expenses/daily", getDailyExpenses);     // Grouped by day
 router.get("/expenses/monthly", getMonthlyExpenses); // Grouped by month
 router.get("/expenses/yearly", getYearlyExpenses);   // Grouped by year
 
-// 📊 Chart-friendly endpoints
-router.get("/charts/daily", getChartsDaily);
-router.get("/charts/monthly", getChartsMonthly);
-router.get("/charts/yearly", getChartsYearly);
-
 module.exports = router;
