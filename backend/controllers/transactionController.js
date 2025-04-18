@@ -246,3 +246,17 @@ exports.getChartsYearly = async (req, res) => {
   }
 };
 
+module.exports = {
+  addTransaction,
+  updateTransaction,
+  getTransactions,
+  deleteTransaction,
+  getBudgetStats,
+  getDailyExpenses,
+  getMonthlyExpenses,
+  getYearlyExpenses,
+  getTransactionsByDate,
+  getChartsDaily,
+  getChartsMonthly,
+  getChartsYearly, // 🟢 this fixes your deployment crash
+};
