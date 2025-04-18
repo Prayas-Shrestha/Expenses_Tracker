@@ -164,27 +164,38 @@ exports.getDailyExpenses = async (req, res) => {
   try {
     const userId = req.user;
 
-    const dailyExpenses = await Transaction.aggregate([
-      { $match: { userId, type: "expense" } },
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const daily = await Transaction.aggregate([
+      {
+        $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          type: { $in: ["expense", "savings"] },
+          date: { $gte: startOfDay, $lte: endOfDay },
+        },
+      },
       {
         $group: {
           _id: {
-            year: { $year: "$date" },
-            month: { $month: "$date" },
-            day: { $dayOfMonth: "$date" }
+            category: "$category", // e.g., "Food", "Gym", etc.
+            type: "$type",         // just to log or debug
           },
-          total: { $sum: "$amount" },
-        }
+          total: { $sum: { $abs: "$amount" } },
+        },
       },
-      { $sort: { "_id": -1 } }
     ]);
 
-    res.json(dailyExpenses);
+    res.status(200).json(daily);
   } catch (error) {
     console.error("❌ Daily Expenses Error:", error.message);
     res.status(500).json({ msg: "Server error" });
   }
 };
+
 
 // ✅ Group monthly expense totals
 exports.getMonthlyExpenses = async (req, res) => {
