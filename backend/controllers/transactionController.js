@@ -234,3 +234,30 @@ exports.getYearlyExpenses = async (req, res) => {
     res.status(500).json({ msg: "Server error" });
   }
 };
+
+// ✅ Get all transactions for a specific date
+exports.getTransactionsByDate = async (req, res) => {
+  try {
+    const userId = req.user;
+    const { date } = req.params;
+
+    if (!date) return res.status(400).json({ msg: "Date is required" });
+
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+
+    const transactions = await Transaction.find({
+      userId,
+      date: { $gte: start, $lte: end },
+    }).sort({ date: -1 });
+
+    res.status(200).json(transactions);
+  } catch (error) {
+    console.error("❌ Error fetching transactions by date:", error.message);
+    res.status(500).json({ msg: "Server error" });
+  }
+};
+
