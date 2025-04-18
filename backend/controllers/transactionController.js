@@ -186,17 +186,16 @@ exports.getDailyExpenses = async (req, res) => {
   }
 };
 
-// ✅ Group monthly expense total
-// ✅ Group monthly expense totals (with abs)
+// ✅ Group monthly expense totals
 exports.getMonthlyExpenses = async (req, res) => {
   try {
     const userId = req.user;
 
-    const monthlyExpenses = await Transaction.aggregate([
+    const monthly = await Transaction.aggregate([
       {
         $match: {
           userId: new mongoose.Types.ObjectId(userId),
-          type: "expense",
+          type: { $in: ["income", "expense", "savings"] },
         },
       },
       {
@@ -204,19 +203,52 @@ exports.getMonthlyExpenses = async (req, res) => {
           _id: {
             year: { $year: "$date" },
             month: { $month: "$date" },
+            type: "$type",
+            budgetCategory: "$budgetCategory",
           },
           total: { $sum: { $abs: "$amount" } },
         },
       },
-      { $sort: { "_id.year": -1, "_id.month": -1 } },
     ]);
 
-    res.status(200).json(monthlyExpenses);
+    const result = {};
+
+    monthly.forEach(({ _id, total }) => {
+      const { year, month, type, budgetCategory } = _id;
+      const key = `${year}-${month}`;
+
+      if (!result[key]) {
+        result[key] = {
+          year,
+          month,
+          income: 0,
+          needs: 0,
+          wants: 0,
+          savings: 0,
+        };
+      }
+
+      if (type === "income") {
+        result[key].income += total;
+      } else if (type === "expense" && budgetCategory) {
+        result[key][budgetCategory] += total;
+      } else if (type === "savings") {
+        result[key].savings += total;
+      }
+    });
+
+    const formatted = Object.values(result).sort((a, b) => {
+      if (b.year === a.year) return b.month - a.month;
+      return b.year - a.year;
+    });
+
+    res.status(200).json(formatted);
   } catch (error) {
     console.error("❌ Monthly Expenses Error:", error.message);
     res.status(500).json({ msg: "Server error" });
   }
 };
+
 
 // ✅ Group yearly expenses + savings + income
 exports.getYearlyExpenses = async (req, res) => {
