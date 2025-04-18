@@ -7,40 +7,30 @@ const {
   deleteTransaction,
   updateTransaction,
   getBudgetStats,
-  getDailyExpenses,
-  getMonthlyExpenses,
-  getYearlyExpenses,
-  getTransactionsByDate
+  getTransactionsByDate,
+  getChartDaily,
+  getChartMonthly,
+  getChartYearly
 } = require("../controllers/transactionController");
 
-// 🔐 Protect all routes
+// 🔐 All routes protected
 router.use(authMiddleware);
 
-// ➕ Add transaction
+// 📥 CRUD
 router.post("/", addTransaction);
-
-// 📥 Get all
 router.get("/", getTransactions);
-
-// ✏️ Update
 router.put("/:id", updateTransaction);
-
-// ❌ Delete
 router.delete("/:id", deleteTransaction);
 
-// 📊 Budget (progress bar)
+// 📊 Budget Stats
 router.get("/budget", getBudgetStats);
 
-// 📆 Daily expenses
-router.get("/expenses/daily", getDailyExpenses);
+// 📆 Chart Data for ChartsScreen
+router.get("/charts/daily", getChartDaily);
+router.get("/charts/monthly", getChartMonthly);
+router.get("/charts/yearly", getChartYearly);
 
-// 📅 Monthly expenses
-router.get("/expenses/monthly", getMonthlyExpenses);
-
-// 📈 Yearly summary
-router.get("/expenses/yearly", getYearlyExpenses);
-
-// 📅 Specific day transactions
+// 📅 Filtered transactions
 router.get("/date/:date", getTransactionsByDate);
 
 module.exports = router;
