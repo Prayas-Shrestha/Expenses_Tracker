@@ -1,5 +1,3 @@
-// controllers/authController.js
-
 const bcrypt = require("bcryptjs");
 const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
@@ -12,31 +10,70 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // Register user (email + password)
 exports.register = async (req, res) => {
   const { name, email, password } = req.body;
-  try {
-    const userExists = await User.findOne({ email });
-    if (userExists) return res.status(400).json({ msg: "User already exists" });
 
+  try {
+    // 1. Check if all fields are present
+    if (!name || !email || !password) {
+      return res.status(400).json({ msg: "All fields are required" });
+    }
+
+    // 2. Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ msg: "Invalid email format" });
+    }
+
+    // 3. Password strength validation
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&^])[A-Za-z\d@$!%*#?&^]{8,}$/;
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({
+        msg: "Password must be at least 8 characters and include a letter, number, and special character",
+      });
+    }
+
+    // 4. Duplicate user check
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ msg: "User already exists" });
+    }
+
+    // 5. Hash password and create user
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = new User({ name, email, password: hashedPassword });
     await user.save();
 
-    res.status(201).json({ msg: "User registered successfully" });
+    return res.status(201).json({ msg: "User registered successfully" });
   } catch (error) {
     console.error("Register Error:", error.message);
-    res.status(500).json({ msg: "Server error", error: error.message });
+    return res.status(500).json({ msg: "Server error", error: error.message });
   }
 };
 
 // Login with email + password
 exports.login = async (req, res) => {
   const { email, password } = req.body;
+
   try {
+    // 1. Check if all fields are present
+    if (!email || !password) {
+      return res.status(400).json({ msg: "Both email and password are required" });
+    }
+
+    // 2. Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ msg: "Invalid email format" });
+    }
+
+    // 3. Find user
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ msg: "Invalid credentials" });
 
+    // 4. Compare passwords
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
 
+    // 5. Create JWT token
     const token = jwt.sign({ user: { id: user._id } }, process.env.JWT_SECRET, {
       expiresIn: "1h",
     });
