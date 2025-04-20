@@ -15,7 +15,13 @@ const UserSchema = new mongoose.Schema({
 
   password: {
     type: String,
-    required: true,
+    required: false,  // Change this to false for Google users
+  },
+
+  authType: {
+    type: String,
+    enum: ["local", "google"],  // To differentiate between normal and Google users
+    default: "local",  // Default to "local" for regular users
   },
 
   // Optional monthly budget for 50/30/20 insights
