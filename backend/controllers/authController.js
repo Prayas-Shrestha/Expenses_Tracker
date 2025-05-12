@@ -1,29 +1,45 @@
 const bcrypt = require("bcryptjs");
 const { OAuth2Client } = require("google-auth-library");
-const User = require("../models/User");
 const jwt = require("jsonwebtoken");
 const fetch = require("node-fetch");
+const User = require("../models/User");
 
-// Optional: You can initialize OAuth2Client if needed
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// Register user (email + password)
+/**
+ * Generate a signed JWT for authenticated users.
+ * 
+ * @param {string} userId - The user's ID
+ * @returns {string} JWT token
+ */
+const generateToken = (userId) => {
+  return jwt.sign({ user: { id: userId } }, process.env.JWT_SECRET, {
+    expiresIn: "1h",
+  });
+};
+
+/**
+ * Register a new user with name, email, and password.
+ * 
+ * @route POST /api/auth/register
+ * @access Public
+ */
 exports.register = async (req, res) => {
   const { name, email, password } = req.body;
 
   try {
-    // 1. Check if all fields are present
+    // Validate input presence
     if (!name || !email || !password) {
       return res.status(400).json({ msg: "All fields are required" });
     }
 
-    // 2. Email format validation
+    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ msg: "Invalid email format" });
     }
 
-    // 3. Password strength validation
+    // Validate password strength
     const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&^])[A-Za-z\d@$!%*#?&^]{8,}$/;
     if (!passwordRegex.test(password)) {
       return res.status(400).json({
@@ -31,68 +47,75 @@ exports.register = async (req, res) => {
       });
     }
 
-    // 4. Duplicate user check
-    const userExists = await User.findOne({ email });
-    if (userExists) {
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
       return res.status(400).json({ msg: "User already exists" });
     }
 
-    // 5. Hash password and create user
+    // Hash password and save user
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, password: hashedPassword });
-    await user.save();
+    await User.create({ name, email, password: hashedPassword });
 
-    return res.status(201).json({ msg: "User registered successfully" });
+    res.status(201).json({ msg: "✅ User registered successfully" });
   } catch (error) {
-    console.error("Register Error:", error.message);
-    return res.status(500).json({ msg: "Server error", error: error.message });
+    console.error("❌ Register Error:", error.message);
+    res.status(500).json({ msg: "Server error", error: error.message });
   }
 };
 
-// Login with email + password
+/**
+ * Login with email and password.
+ * 
+ * @route POST /api/auth/login
+ * @access Public
+ */
 exports.login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // 1. Check if all fields are present
+    // Validate input
     if (!email || !password) {
       return res.status(400).json({ msg: "Both email and password are required" });
     }
 
-    // 2. Email format validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ msg: "Invalid email format" });
     }
 
-    // 3. Find user
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: "Invalid credentials" });
+    if (!user || !user.password) {
+      return res.status(400).json({ msg: "Invalid credentials" });
+    }
 
-    // 4. Compare passwords
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
+    if (!isMatch) {
+      return res.status(400).json({ msg: "Invalid credentials" });
+    }
 
-    // 5. Create JWT token
-    const token = jwt.sign({ user: { id: user._id } }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
-    });
+    const token = generateToken(user._id);
 
     res.json({
       token,
       user: {
+        _id: user._id,
         name: user.name,
         email: user.email,
-        _id: user._id,
       },
     });
   } catch (error) {
-    console.error("Login Error:", error.message);
+    console.error("❌ Login Error:", error.message);
     res.status(500).json({ msg: "Server error", error: error.message });
   }
 };
 
-// Login with Google access token
+/**
+ * Login using Google OAuth access token.
+ * 
+ * @route POST /api/auth/google
+ * @access Public
+ */
 exports.googleLogin = async (req, res) => {
   const { accessToken } = req.body;
 
@@ -101,6 +124,7 @@ exports.googleLogin = async (req, res) => {
   }
 
   try {
+    // Get user info from Google
     const googleRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -109,13 +133,13 @@ exports.googleLogin = async (req, res) => {
       return res.status(400).json({ msg: "Failed to verify token with Google" });
     }
 
-    const googleData = await googleRes.json();
-    const { email, name } = googleData;
+    const { email, name } = await googleRes.json();
 
     if (!email || !name) {
       return res.status(400).json({ msg: "Invalid Google user data" });
     }
 
+    // Check if user exists, else create new
     let user = await User.findOne({ email });
 
     if (!user) {
@@ -123,24 +147,78 @@ exports.googleLogin = async (req, res) => {
         name,
         email,
         password: "",
-        provider: "google", // Optional flag
+        provider: "google",
       });
     }
 
-    const token = jwt.sign({ user: { id: user._id } }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
-    });
+    const token = generateToken(user._id);
 
     res.json({
       token,
       user: {
+        _id: user._id,
         name: user.name,
         email: user.email,
-        _id: user._id,
       },
     });
   } catch (error) {
-    console.error("Google Login Error:", error.message);
+    console.error("❌ Google Login Error:", error.message);
     res.status(400).json({ msg: "Google sign-in failed" });
+  }
+};
+
+/**
+ * Update user profile with name, email, or gender.
+ * 
+ * @route PUT /api/auth/profile
+ * @access Private
+ */
+exports.updateProfile = async (req, res) => {
+  const userId = req.user.id; // Set by authentication middleware
+  const { name, email, gender } = req.body;
+
+  try {
+    // Require at least one field
+    if (!name && !email && !gender) {
+      return res.status(400).json({ msg: "At least one field must be provided" });
+    }
+
+    const updateFields = {};
+
+    if (name) updateFields.name = name;
+
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ msg: "Invalid email format" });
+      }
+
+      const existing = await User.findOne({ email });
+      if (existing && existing._id.toString() !== userId) {
+        return res.status(400).json({ msg: "Email already in use" });
+      }
+
+      updateFields.email = email;
+    }
+
+    if (gender) updateFields.gender = gender;
+
+    const updatedUser = await User.findByIdAndUpdate(userId, updateFields, {
+      new: true,
+      runValidators: true,
+    });
+
+    res.json({
+      msg: "✅ Profile updated successfully",
+      user: {
+        _id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        gender: updatedUser.gender,
+      },
+    });
+  } catch (err) {
+    console.error("❌ Update Profile Error:", err.message);
+    res.status(500).json({ msg: "Server error", error: err.message });
   }
 };
