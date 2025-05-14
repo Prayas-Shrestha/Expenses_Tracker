@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 // Controller functions for bank account-related actions
-const { linkBankAccount, getBankAccounts, getMockTransactions, confirmTransaction } = require('../controllers/bankController');
+const { linkBankAccount, getBankAccounts, getMockTransactions, confirmTransaction,deleteBankAccount } = require('../controllers/bankController');
 
 // Authentication middleware
 const authMiddleware = require('../middleware/authMiddleware');
@@ -18,5 +18,7 @@ router.get('/mock-transactions', authMiddleware, getMockTransactions); // Get mo
 
 // Route to confirm a mock transaction
 router.post('/confirm-transaction', authMiddleware, confirmTransaction); // Confirm mock transaction
+
+router.delete('/:id', authMiddleware, deleteBankAccount);
 
 module.exports = router;
