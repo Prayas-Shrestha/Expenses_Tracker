@@ -12,21 +12,18 @@ exports.linkBankAccount = async (req, res) => {
   try {
     const { bankName, accountNumber } = req.body;
 
-    // Ensure user ID is available
-    if (!req.user._id) {
+    if (!req.user) {
       return res.status(400).json({ msg: "User ID is required" });
     }
 
-    // Create and save new bank account
     const newAccount = new BankAccount({
-      user: req.user._id,
+      user: req.user,  // <- This now works
       bankName,
       accountNumber,
     });
 
     await newAccount.save();
 
-    // Generate mock transactions for the newly linked bank account
     const mockData = [
       { description: "Coffee", amount: -4.5 },
       { description: "Freelance Payment", amount: 200 },
@@ -34,7 +31,7 @@ exports.linkBankAccount = async (req, res) => {
     ];
 
     const mockTransactions = mockData.map(tx => ({
-      user: req.user._id,
+      user: req.user,
       bankAccount: newAccount._id,
       ...tx,
     }));
@@ -47,7 +44,6 @@ exports.linkBankAccount = async (req, res) => {
     res.status(500).json({ msg: "Failed to link account", error: err.message });
   }
 };
-
 /**
  * Get all bank accounts associated with the authenticated user.
  * 
