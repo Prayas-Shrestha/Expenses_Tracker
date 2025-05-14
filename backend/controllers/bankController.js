@@ -79,32 +79,39 @@ exports.getMockTransactions = async (req, res) => {
 exports.confirmTransaction = async (req, res) => {
   const { mockId, category, type } = req.body;
 
-  // Find the mock transaction to confirm
-  const mockTx = await MockTransaction.findOne({ _id: mockId, user: req.user});
+  try {
+    // Match using plain user ID
+    const mockTx = await MockTransaction.findOne({ _id: mockId, user: req.user });
 
-  if (!mockTx || mockTx.isAdded) {
-    return res.status(404).json({ msg: "Transaction not found or already added" });
+    console.log("Found Mock Transaction:", mockTx);
+
+    if (!mockTx || mockTx.isAdded) {
+      return res.status(404).json({ msg: "Transaction not found or already added" });
+    }
+
+    const newTx = new Transaction({
+      userId: req.user, // ✅ FIXED
+      type,
+      category,
+      amount: Math.abs(mockTx.amount),
+      note: mockTx.description,
+      date: mockTx.date,
+      budgetCategory: type === "income" ? undefined : "needs",
+    });
+
+    await newTx.save();
+
+    mockTx.isAdded = true;
+    await mockTx.save();
+
+    console.log("✅ Transaction confirmed and saved");
+    res.status(201).json({ msg: "✅ Transaction added", transaction: newTx });
+  } catch (error) {
+    console.error("❌ ERROR inside confirmTransaction:", error);
+    return res.status(500).json({ msg: "❌ Failed to confirm transaction", error: error.message });
   }
-
-  // Create a real transaction from the mock transaction
-  const newTx = new Transaction({
-    userId: req.user,
-    type,
-    category,
-    amount: Math.abs(mockTx.amount),
-    note: mockTx.description,
-    date: mockTx.date,
-    budgetCategory: type === "income" ? undefined : "needs",
-  });
-
-  await newTx.save();
-
-  // Mark the mock transaction as added
-  mockTx.isAdded = true;
-  await mockTx.save();
-
-  res.status(201).json({ msg: "✅ Transaction added", transaction: newTx });
 };
+
 /**
  * Delete a linked bank account and optionally its mock transactions.
  * 
