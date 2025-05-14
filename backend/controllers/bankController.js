@@ -51,7 +51,7 @@ exports.linkBankAccount = async (req, res) => {
  * @access Private
  */
 exports.getBankAccounts = async (req, res) => {
-  const accounts = await BankAccount.find({ user: req.user._id });
+  const accounts = await BankAccount.find({ user: req.user });
   res.json(accounts);
 };
 
@@ -63,7 +63,7 @@ exports.getBankAccounts = async (req, res) => {
  */
 exports.getMockTransactions = async (req, res) => {
   const transactions = await MockTransaction.find({
-    user: req.user._id,
+    user: req.user,
     isAdded: false,
   });
 
@@ -80,7 +80,7 @@ exports.confirmTransaction = async (req, res) => {
   const { mockId, category, type } = req.body;
 
   // Find the mock transaction to confirm
-  const mockTx = await MockTransaction.findOne({ _id: mockId, user: req.user._id });
+  const mockTx = await MockTransaction.findOne({ _id: mockId, user: req.user});
 
   if (!mockTx || mockTx.isAdded) {
     return res.status(404).json({ msg: "Transaction not found or already added" });
@@ -88,7 +88,7 @@ exports.confirmTransaction = async (req, res) => {
 
   // Create a real transaction from the mock transaction
   const newTx = new Transaction({
-    userId: req.user._id,
+    userId: req.user,
     type,
     category,
     amount: Math.abs(mockTx.amount),
