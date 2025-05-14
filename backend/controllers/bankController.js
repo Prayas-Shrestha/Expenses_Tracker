@@ -105,3 +105,32 @@ exports.confirmTransaction = async (req, res) => {
 
   res.status(201).json({ msg: "✅ Transaction added", transaction: newTx });
 };
+/**
+ * Delete a linked bank account and optionally its mock transactions.
+ * 
+ * @route DELETE /api/bank/:id
+ * @access Private
+ */
+exports.deleteBankAccount = async (req, res) => {
+  try {
+    const bankAccount = await BankAccount.findOne({
+      _id: req.params.id,
+      user: req.user,
+    });
+
+    if (!bankAccount) {
+      return res.status(404).json({ msg: "❌ Bank account not found" });
+    }
+
+    // Delete related mock transactions (optional but smart)
+    await MockTransaction.deleteMany({ bankAccount: bankAccount._id });
+
+    // Delete the account
+    await bankAccount.deleteOne();
+
+    res.status(200).json({ msg: "✅ Bank account deleted successfully" });
+  } catch (err) {
+    console.error("❌ Error deleting bank account:", err);
+    res.status(500).json({ msg: "Server error", error: err.message });
+  }
+};
