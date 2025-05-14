@@ -1,6 +1,4 @@
 const jwt = require("jsonwebtoken");
-
-// Middleware to protect routes with JWT authentication
 module.exports = (req, res, next) => {
   const authHeader = req.header("Authorization");
 
@@ -20,3 +18,4 @@ module.exports = (req, res, next) => {
     return res.status(401).json({ msg: "Invalid token" });
   }
 };
+
