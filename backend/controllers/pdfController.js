@@ -16,7 +16,7 @@ exports.exportTransactionsToPDF = async (req, res) => {
     const endOfMonth = new Date(Date.UTC(year, month + 1, 0));
     endOfMonth.setUTCHours(23, 59, 59, 999);
 
-    const userId = req.user._id; // ✅ This works now that authMiddleware sets req.user = { _id: ... }
+    const userId = req.user;
 
     const transactions = await Transaction.find({
       userId: new mongoose.Types.ObjectId(userId),
